@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lightsaber Duel</title>
+    <style>
+        body {
+            background-color: #0d0d0d;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        canvas {
+            background-color: #1a1a1a;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
+        }
+        #instructions {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .key {
+            background: #333;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lightsaber Duel</h1>
+    <div id="instructions">
+        <p>Player (Jedi - Green): Move with <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> | Attack with <span class="key">Space</span></p>
+        <p>Defeat the Red Sith! (AI controlled)</p>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        class Fighter {
+            constructor(x, y, color, isPlayer) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.isPlayer = isPlayer;
+                this.width = 40;
+                this.height = 80;
+                this.speed = 4.5;
+                this.hp = 100;
+                this.isAttacking = false;
+                this.attackFrame = 0;
+                this.facingRight = isPlayer;
+            }
+
+            update(enemy) {
+                if (this.hp <= 0) return;
+
+                if (this.isPlayer) {
+                    if (keys['KeyA']) { this.x -= this.speed; this.facingRight = false; }
+                    if (keys['KeyD']) { this.x += this.speed; this.facingRight = true; }
+                    if (keys['KeyW']) this.y -= this.speed;
+                    if (keys['KeyS']) this.y += this.speed;
+                    
+                    if (keys['Space'] && !this.isAttacking) {
+                        this.isAttacking = true;
+                        this.attackFrame = 0;
+                    }
+                } else {
+                    // Simple AI logic
+                    const dx = enemy.x - this.x;
+                    const dy = enemy.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    this.facingRight = dx > 0;
+
+                    if (dist > 90) {
+                        this.x += (dx / dist) * (this.speed * 0.7);
+                        this.y += (dy / dist) * (this.speed * 0.7);
+                    } else {
+                        if (Math.random() < 0.04 && !this.isAttacking) {
+                            this.isAttacking = true;
+                            this.attackFrame = 0;
+                        }
+                    }
+                }
+
+                // Constrain fighter within the canvas
+                this.x = Math.max(this.width/2, Math.min(canvas.width - this.width/2, this.x));
+                this.y = Math.max(this.height/2, Math.min(canvas.height - this.height/2, this.y));
+
+                // Attack logic
+                if (this.isAttacking) {
+                    this.attackFrame++;
+                    if (this.attackFrame === 10) {
+                        // Check if hit lands during the swing
+                        const dx = enemy.x - this.x;
+                        const dy = enemy.y - this.y;
+                        if (Math.hypot(dx, dy) < 110) {
+                            // Check if facing the correct direction to hit the enemy
+                            if ((this.facingRight && dx > 0) || (!this.facingRight && dx < 0)) {
+                                enemy.hp -= 20; // damage
+                            }
+                        }
+                    }
+                    if (this.attackFrame > 25) {
+                        this.isAttacking = false;
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                // Draw Character Body
+                ctx.fillStyle = this.isPlayer ? '#cccccc' : '#555555';
+                ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+                
+                // Draw HP Bar
+                ctx.fillStyle = '#ff0000';
+                ctx.fillRect(-this.width/2, -this.height/2 - 20, this.width, 6);
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(-this.width/2, -this.height/2 - 20, this.width * Math.max(0, this.hp/100), 6);
+                
+                // Draw Lightsaber
+                ctx.save();
+                if (!this.facingRight) ctx.scale(-1, 1);
+                
+                let angle = -Math.PI / 6; // Default resting angle
+                if (this.isAttacking) {
+                    // Swing animation arc
+                    angle = -Math.PI/6 + Math.sin((this.attackFrame / 25) * Math.PI) * Math.PI;
+                }
+                
+                ctx.translate(this.width/2, 0); // Hilt position
+                ctx.rotate(angle);
+                
+                // Handle/Hilt
+                ctx.fillStyle = '#aaaaaa';
+                ctx.fillRect(-5, -5, 20, 10);
+                
+                // Blade Core
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(15, -4, 90, 8); 
+                
+                // Blade Glow
+                ctx.globalAlpha = 0.7;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(15, -7, 90, 14);
+                
+                ctx.restore();
+                ctx.restore();
+            }
+        }
+
+        const player = new Fighter(200, 200, '#00ff00', true); // Green Lightsaber
+        const enemy = new Fighter(600, 200, '#ff0000', false); // Red Lightsaber
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (player.hp > 0 && enemy.hp > 0) {
+                player.update(enemy);
+                enemy.update(player);
+            }
+            
+            player.draw();
+            enemy.draw();
+            
+            // Check for game over
+            if (player.hp <= 0 || enemy.hp <= 0) {
+                ctx.fillStyle = player.hp > 0 ? '#00ff00' : '#ff0000';
+                ctx.font = 'bold 50px Courier New';
+                ctx.textAlign = 'center';
+                const text = player.hp > 0 ? 'JEDI WINS!' : 'SITH WINS!';
+                
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.fillText(text, canvas.width/2, canvas.height/2);
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        gameLoop();
+    </script>
+</body>
+</html>
